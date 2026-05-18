@@ -120,3 +120,51 @@ Initial 100-example held-out generation eval from the first checkpoint:
 - target noop -> predicted noop: `71.9%`
 
 The first result shows the model learned the strict output contract, but the taxonomy labels are noisy. The next iteration should focus on cleaner labels, preference data for patch/noop decisions, and live agent A/B evaluation.
+
+## Live Codex A/B Loop
+
+The live demo compares two Codex-style loops on the same task set:
+
+- `baseline`: Codex retries from the failing workspace state.
+- `coach`: after a failed pass, HRM-Coach reads the trace and appends one scoped rule to `.agent/HRM_COACH.md`; the next Codex pass must read that task-local memory.
+
+Task file format is JSONL:
+
+```json
+{"task_id":"example-1","repo_url":"https://github.com/org/repo.git","base_commit":"abc123","issue":"Fix the reported bug...","setup_command":"pip install -e .","test_command":"pytest tests/test_bug.py -q"}
+```
+
+`repo_path` can be used instead of `repo_url` for local repos. `success_regex` can override exit-code-only verification when a command must print a specific success signal.
+
+Local smoke run:
+
+```bash
+python experiments/agent_coach/scripts/run_codex_ab.py \
+  --tasks /path/to/tasks.jsonl \
+  --output-dir experiments/agent_coach/outputs/codex_ab_smoke \
+  --coach-model-path /path/to/hrm_text_1b_agent_coach/final \
+  --local-files-only \
+  --max-tasks 1 \
+  --max-passes 2
+```
+
+10-node/80-shard Slurm run:
+
+```bash
+cd /path/to/HRM-Text
+TASKS=/path/to/tasks.jsonl \
+COACH_MODEL_PATH=/path/to/hrm_text_1b_agent_coach/final \
+OUTPUT_ROOT=/path/to/codex_ab_run \
+PYTHON_BIN=/path/to/python \
+/data/slurm/bin/sbatch experiments/agent_coach/launch/hrm_coach_codex_ab.sbatch
+```
+
+Aggregate shard outputs:
+
+```bash
+python experiments/agent_coach/scripts/summarize_codex_ab.py \
+  --results-root /path/to/codex_ab_run \
+  --out /path/to/codex_ab_run/summary.json
+```
+
+Do not put API keys in task files, launcher scripts, or committed config. The Codex subprocess inherits the runtime environment and local Codex auth; keep secrets outside git.
