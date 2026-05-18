@@ -1,0 +1,6 @@
+data/
+logs/
+outputs/
+*.jsonl
+*.safetensors
+__pycache__/
