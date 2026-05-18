@@ -77,3 +77,46 @@ The first 10-node run completed 300 SFT steps on 80 H100s:
 - step 300 validation loss: `0.0268`
 
 This validates the data and posttraining path. The next research step is a live A/B eval: base agent vs. base agent plus HRM-Coach-generated Markdown patches.
+
+## Held-Out Generation Eval
+
+After SFT, run the generation evaluator on held-out traces:
+
+```bash
+python experiments/agent_coach/scripts/eval_hrm_coach.py \
+  --model-path experiments/agent_coach/outputs/run_*/final \
+  --data-path experiments/agent_coach/data/open_agent_traces/val.jsonl \
+  --out experiments/agent_coach/outputs/eval/predictions.jsonl \
+  --limit 200
+```
+
+On Slurm:
+
+```bash
+PYTHON_BIN=/path/to/python \
+MODEL_PATH=/path/to/final/checkpoint \
+DATA_PATH=/path/to/val.jsonl \
+OUT=/path/to/predictions.jsonl \
+/data/slurm/bin/sbatch experiments/agent_coach/launch/eval_hrm_agent_coach.sbatch
+```
+
+The evaluator reports:
+
+- JSON validity
+- schema validity
+- action accuracy
+- failure-mode accuracy
+- patch/noop behavior
+- common schema errors
+
+Initial 100-example held-out generation eval from the first checkpoint:
+
+- JSON validity: `100%`
+- schema validity: `100%`
+- action exact match: `71%`
+- failure-mode exact match: `54%`
+- patch file exact match: `100%`
+- target patch -> predicted patch: `70.6%`
+- target noop -> predicted noop: `71.9%`
+
+The first result shows the model learned the strict output contract, but the taxonomy labels are noisy. The next iteration should focus on cleaner labels, preference data for patch/noop decisions, and live agent A/B evaluation.

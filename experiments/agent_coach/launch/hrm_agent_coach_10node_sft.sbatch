@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-HRM_DIR="${HRM_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+HRM_DIR="${HRM_DIR:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
 EXP_DIR="${EXP_DIR:-${HRM_DIR}/experiments/agent_coach}"
 MODEL_PATH="${MODEL_PATH:-sapientinc/HRM-Text-1B}"
 DATA_DIR="${DATA_DIR:-${EXP_DIR}/data/open_agent_traces}"
