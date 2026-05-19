@@ -21,7 +21,14 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-$HRM_DIR/experiments/agent_coach/outputs/codex_ab_${
 
 ARMS="${ARMS:-baseline,coach}"
 MAX_PASSES="${MAX_PASSES:-2}"
-CODEX_BIN="${CODEX_BIN:-codex}"
+MAX_TASKS="${MAX_TASKS:-}"
+if [[ -z "${CODEX_BIN:-}" ]]; then
+  if [[ -x "$HOME/.local/bin/codex-native" ]]; then
+    CODEX_BIN="$HOME/.local/bin/codex-native"
+  else
+    CODEX_BIN="codex"
+  fi
+fi
 CODEX_MODEL="${CODEX_MODEL:-}"
 CODEX_SANDBOX="${CODEX_SANDBOX:-danger-full-access}"
 CODEX_TIMEOUT="${CODEX_TIMEOUT:-900}"
@@ -56,6 +63,9 @@ ARGS=(
   --coach-max-new-tokens "$COACH_MAX_NEW_TOKENS"
 )
 
+if [[ -n "$MAX_TASKS" ]]; then
+  ARGS+=(--max-tasks "$MAX_TASKS")
+fi
 if [[ -n "$CODEX_MODEL" ]]; then
   ARGS+=(--codex-model "$CODEX_MODEL")
 fi

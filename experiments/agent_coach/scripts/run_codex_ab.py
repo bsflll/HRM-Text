@@ -18,6 +18,13 @@ if str(SCRIPT_DIR) not in sys.path:
 
 
 PATCH_FILE = ".agent/HRM_COACH.md"
+WORKSPACE_EXCLUDES = (
+    ".venv/",
+    ".agent/",
+    ".codex_final_pass_*.txt",
+    "__pycache__/",
+    ".pytest_cache/",
+)
 
 
 @dataclass
@@ -71,6 +78,43 @@ def truncate(text: str, limit: int) -> str:
     return text[-limit:]
 
 
+def commit_workspace_snapshot(workspace: Path, message: str) -> None:
+    add = run_command(["git", "add", "."], workspace, timeout=120)
+    if add.returncode != 0:
+        raise RuntimeError(f"git add failed for {workspace}:\n{add.stderr}")
+    commit = run_command(
+        [
+            "git",
+            "-c",
+            "user.name=Christina",
+            "-c",
+            "user.email=bsflll@users.noreply.github.com",
+            "commit",
+            "--allow-empty",
+            "-m",
+            message,
+        ],
+        workspace,
+        timeout=120,
+    )
+    if commit.returncode != 0:
+        raise RuntimeError(f"git commit failed for {workspace}:\n{commit.stderr}")
+
+
+def apply_test_patch(task: dict[str, Any], workspace: Path) -> None:
+    patch = task.get("test_patch")
+    if not patch:
+        return
+    patch_path = workspace / ".hrm_swebench_test.patch"
+    patch_path.write_text(str(patch), encoding="utf-8")
+    try:
+        result = run_command(["git", "apply", "--allow-empty", str(patch_path)], workspace, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(f"git apply test_patch failed for {task['task_id']}:\n{result.stderr}")
+    finally:
+        patch_path.unlink(missing_ok=True)
+
+
 def prepare_workspace(task: dict[str, Any], root: Path, arm: str) -> Path:
     task_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(task["task_id"]))
     workspace = root / f"{task_id}__{arm}"
@@ -85,26 +129,8 @@ def prepare_workspace(task: dict[str, Any], root: Path, arm: str) -> Path:
         init = run_command(["git", "init"], workspace, timeout=30)
         if init.returncode != 0:
             raise RuntimeError(f"git init failed for {workspace}:\n{init.stderr}")
-        add = run_command(["git", "add", "."], workspace, timeout=120)
-        if add.returncode != 0:
-            raise RuntimeError(f"git add failed for {workspace}:\n{add.stderr}")
-        commit = run_command(
-            [
-                "git",
-                "-c",
-                "user.name=Christina",
-                "-c",
-                "user.email=bsflll@users.noreply.github.com",
-                "commit",
-                "--allow-empty",
-                "-m",
-                "initial task workspace",
-            ],
-            workspace,
-            timeout=120,
-        )
-        if commit.returncode != 0:
-            raise RuntimeError(f"git commit failed for {workspace}:\n{commit.stderr}")
+        apply_test_patch(task, workspace)
+        commit_workspace_snapshot(workspace, "initial task workspace")
     elif task.get("repo_url"):
         clone_cmd = ["git", "clone"]
         if not task.get("base_commit"):
@@ -117,8 +143,16 @@ def prepare_workspace(task: dict[str, Any], root: Path, arm: str) -> Path:
             checkout = run_command(["git", "checkout", str(task["base_commit"])], workspace, timeout=120)
             if checkout.returncode != 0:
                 raise RuntimeError(f"git checkout failed for {task['base_commit']}:\n{checkout.stderr}")
+        apply_test_patch(task, workspace)
+        commit_workspace_snapshot(workspace, "initial task workspace")
     else:
         raise ValueError("Task must define repo_path or repo_url")
+
+    exclude_file = workspace / ".git" / "info" / "exclude"
+    with exclude_file.open("a", encoding="utf-8") as f:
+        f.write("\n# HRM-Coach live eval local artifacts\n")
+        for pattern in WORKSPACE_EXCLUDES:
+            f.write(pattern + "\n")
 
     return workspace
 
@@ -141,6 +175,17 @@ def ensure_coach_memory(workspace: Path) -> Path:
             encoding="utf-8",
         )
     return memory
+
+
+def build_setup_context(setup_result: dict[str, Any] | None) -> str:
+    if setup_result is None:
+        return ""
+    return (
+        "\nInitial setup command result:\n"
+        f"Exit: {setup_result['returncode']} timed_out={setup_result['timed_out']}\n"
+        f"Stdout:\n{truncate(setup_result['stdout'], 1800)}\n"
+        f"Stderr:\n{truncate(setup_result['stderr'], 1800)}\n"
+    )
 
 
 def build_retry_context(pass_idx: int, previous_records: list[dict[str, Any]]) -> str:
@@ -170,7 +215,14 @@ def build_retry_context(pass_idx: int, previous_records: list[dict[str, Any]]) -
     )
 
 
-def build_codex_prompt(task: dict[str, Any], arm: str, pass_idx: int, max_passes: int, previous_records: list[dict[str, Any]]) -> str:
+def build_codex_prompt(
+    task: dict[str, Any],
+    arm: str,
+    pass_idx: int,
+    max_passes: int,
+    previous_records: list[dict[str, Any]],
+    setup_result: dict[str, Any] | None,
+) -> str:
     test_command = task.get("test_command", "")
     coach_note = ""
     if arm == "coach":
@@ -183,6 +235,7 @@ def build_codex_prompt(task: dict[str, Any], arm: str, pass_idx: int, max_passes
         "You are running a Codex-style coding loop inside a disposable repository workspace.\n"
         f"Pass {pass_idx + 1} of {max_passes}.\n"
         f"{coach_note}\n"
+        f"{build_setup_context(setup_result)}\n"
         f"{build_retry_context(pass_idx, previous_records)}\n"
         "Task:\n"
         f"{task['issue'].strip()}\n\n"
@@ -203,21 +256,22 @@ def run_codex_pass(
     pass_idx: int,
     max_passes: int,
     previous_records: list[dict[str, Any]],
+    setup_result: dict[str, Any] | None,
     args: argparse.Namespace,
 ) -> CommandResult:
-    prompt = build_codex_prompt(task, arm, pass_idx, max_passes, previous_records)
+    prompt = build_codex_prompt(task, arm, pass_idx, max_passes, previous_records, setup_result)
     cmd = [
         args.codex_bin,
         "exec",
         "--cd",
         str(workspace),
-        "--sandbox",
-        args.codex_sandbox,
-        "--ask-for-approval",
-        "never",
         "--output-last-message",
         str(workspace / f".codex_final_pass_{pass_idx + 1}.txt"),
     ]
+    if args.codex_bypass_approvals_and_sandbox:
+        cmd.append("--dangerously-bypass-approvals-and-sandbox")
+    else:
+        cmd.extend(["--sandbox", args.codex_sandbox])
     if not args.codex_persist_sessions:
         cmd.append("--ephemeral")
     if args.codex_model:
@@ -412,12 +466,13 @@ def run_arm(task: dict[str, Any], arm: str, root: Path, coach, args: argparse.Na
     workspace = prepare_workspace(task, root, arm)
     memory_path = ensure_coach_memory(workspace) if arm == "coach" else None
     setup_result = run_setup(task, workspace, args.setup_timeout)
+    setup_record = result_to_dict(setup_result)
     pass_records = []
     solved = False
     patches_applied = 0
 
     for pass_idx in range(args.max_passes):
-        codex_result = run_codex_pass(task, workspace, arm, pass_idx, args.max_passes, pass_records, args)
+        codex_result = run_codex_pass(task, workspace, arm, pass_idx, args.max_passes, pass_records, setup_record, args)
         verify_success, verify_result = run_verification(task, workspace, args.verify_timeout)
         solved = verify_success
 
@@ -455,7 +510,7 @@ def run_arm(task: dict[str, Any], arm: str, root: Path, coach, args: argparse.Na
         "task_id": task["task_id"],
         "arm": arm,
         "workspace": str(workspace),
-        "setup": result_to_dict(setup_result),
+        "setup": setup_record,
         "solved": solved,
         "passes": len(pass_records),
         "patches_applied": patches_applied,
@@ -478,6 +533,13 @@ def main() -> None:
     parser.add_argument("--codex-bin", default="codex")
     parser.add_argument("--codex-model", default=None)
     parser.add_argument("--codex-sandbox", default="danger-full-access")
+    parser.add_argument(
+        "--no-codex-bypass-approvals-and-sandbox",
+        dest="codex_bypass_approvals_and_sandbox",
+        action="store_false",
+        help="Use --sandbox instead of Codex's non-interactive bypass flag.",
+    )
+    parser.set_defaults(codex_bypass_approvals_and_sandbox=True)
     parser.add_argument("--codex-persist-sessions", action="store_true", help="Keep Codex session files. Default is ephemeral to reduce trace/secret persistence.")
     parser.add_argument("--codex-timeout", type=int, default=900)
     parser.add_argument("--setup-timeout", type=int, default=600)

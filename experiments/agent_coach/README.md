@@ -136,6 +136,29 @@ Task file format is JSONL:
 
 `repo_path` can be used instead of `repo_url` for local repos. `success_regex` can override exit-code-only verification when a command must print a specific success signal.
 
+Build a real open SWE-bench Lite task file:
+
+```bash
+python experiments/agent_coach/scripts/prepare_swebench_live_tasks.py \
+  --output experiments/agent_coach/data/swebench_live/fast_lite_80.jsonl \
+  --use-fast-repo-defaults \
+  --runner docker \
+  --max-tasks 80
+```
+
+To keep live eval cleaner, exclude exact task IDs used during HRM-Coach SFT:
+
+```bash
+python experiments/agent_coach/scripts/prepare_swebench_live_tasks.py \
+  --output experiments/agent_coach/data/swebench_live/fast_lite_heldout.jsonl \
+  --use-fast-repo-defaults \
+  --runner docker \
+  --exclude-jsonl experiments/agent_coach/data/open_agent_traces/train.jsonl \
+  --exclude-jsonl experiments/agent_coach/data/open_agent_traces/val.jsonl
+```
+
+The Docker runner uses the installed `swebench` package's repo/version specs and skips setup recipes that mutate repository files before the agent starts.
+
 Local smoke run:
 
 ```bash
@@ -158,6 +181,8 @@ OUTPUT_ROOT=/path/to/codex_ab_run \
 PYTHON_BIN=/path/to/python \
 /data/slurm/bin/sbatch experiments/agent_coach/launch/hrm_coach_codex_ab.sbatch
 ```
+
+Set `MAX_TASKS=1` for a one-task smoke run before the broad array.
 
 Aggregate shard outputs:
 
