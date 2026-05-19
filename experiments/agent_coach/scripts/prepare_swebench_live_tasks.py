@@ -19,7 +19,10 @@ DEFAULT_FAST_REPOS = (
     "sphinx-doc/sphinx",
 )
 
-DEFAULT_FORBIDDEN_PATH_REGEX = r"(^|/)(tests?/|tox\.ini$|noxfile\.py$|setup\.cfg$|pyproject\.toml$|setup\.py$)"
+DEFAULT_FORBIDDEN_PATH_REGEX = (
+    r"(^|/)(tests?/|conftest\.py$|sitecustomize\.py$|pytest\.ini$|tox\.ini$|"
+    r"noxfile\.py$|setup\.cfg$|pyproject\.toml$|setup\.py$)"
+)
 
 
 def parse_json_list(value: Any) -> list[str]:
