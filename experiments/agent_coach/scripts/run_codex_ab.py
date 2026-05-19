@@ -467,6 +467,8 @@ def run_arm(task: dict[str, Any], arm: str, root: Path, coach, args: argparse.Na
     memory_path = ensure_coach_memory(workspace) if arm == "coach" else None
     setup_result = run_setup(task, workspace, args.setup_timeout)
     setup_record = result_to_dict(setup_result)
+    if task.get("commit_setup_changes") and setup_result is not None and setup_result.returncode == 0:
+        commit_workspace_snapshot(workspace, "post setup workspace")
     pass_records = []
     solved = False
     patches_applied = 0

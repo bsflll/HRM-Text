@@ -87,6 +87,10 @@ def pip_packages_from_spec(row: dict[str, Any], spec: dict[str, Any]) -> list[st
             "asgiref==3.5.2",
             "blinker==1.4",
         ]
+    if row["repo"] == "sphinx-doc/sphinx" and "setuptools" not in " ".join(packages).lower():
+        packages.append("setuptools==70.0.0")
+    if row["repo"] == "sphinx-doc/sphinx" and "roman" not in " ".join(packages).lower():
+        packages.append("roman==4.2")
 
     if "pytest" not in " ".join(packages).lower():
         packages.append("pytest")
@@ -102,11 +106,14 @@ def build_setup_command(row: dict[str, Any], args: argparse.Namespace, spec: dic
         if spec is None:
             raise ValueError(f"No SWE-bench spec available for {row['instance_id']}")
         packages = pip_packages_from_spec(row, spec)
-        commands = [
-            "python -m venv .venv",
-            ". .venv/bin/activate",
-            "python -m pip install -U pip setuptools wheel",
-        ]
+        commands = list(spec.get("pre_install") or [])
+        commands.extend(
+            [
+                "python -m venv .venv",
+                ". .venv/bin/activate",
+                "python -m pip install -U pip setuptools wheel",
+            ]
+        )
         if packages:
             commands.append("python -m pip install " + " ".join(shell_quote(package) for package in packages))
         commands.append(spec.get("install") or "python -m pip install -e .")
@@ -173,6 +180,8 @@ def make_task(row: dict[str, Any], tests: list[str], args: argparse.Namespace) -
         "test_patch": row.get("test_patch") or "",
         "runner": args.runner,
     }
+    if spec and spec.get("pre_install"):
+        task["commit_setup_changes"] = True
     setup_command = build_setup_command(row, args, spec)
     if setup_command:
         task["setup_command"] = setup_command

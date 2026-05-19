@@ -158,6 +158,7 @@ python experiments/agent_coach/scripts/prepare_swebench_live_tasks.py \
 ```
 
 The Docker runner uses the installed `swebench` package's repo/version specs and skips setup recipes that mutate repository files before the agent starts.
+Add `--allow-pre-install` to include those recipes; the live harness commits successful setup-time compatibility edits before Codex starts so final diffs still show only agent changes.
 
 Local smoke run:
 
