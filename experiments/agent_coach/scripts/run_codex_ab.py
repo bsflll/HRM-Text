@@ -195,6 +195,7 @@ def build_retry_context(pass_idx: int, previous_records: list[dict[str, Any]]) -
     verify = last.get("verify")
     final_message = last.get("codex_final_message") or ""
     coach = last.get("coach")
+    policy_errors = last.get("policy_errors") or []
     coach_note = ""
     if coach and coach.get("applied"):
         coach_note = "\nHRM-Coach updated `.agent/HRM_COACH.md`; read it before making the next change.\n"
@@ -209,11 +210,13 @@ def build_retry_context(pass_idx: int, previous_records: list[dict[str, Any]]) -
             f"Verification stdout:\n{truncate(verify['stdout'], 1800)}\n"
             f"Verification stderr:\n{truncate(verify['stderr'], 1800)}"
         )
+    policy_text = f"Verification policy errors:\n{'; '.join(policy_errors)}\n" if policy_errors else ""
     return (
         "\nPrevious loop state:\n"
         f"The prior pass did not solve the task. Continue from the current repository state.\n"
         f"{coach_note}"
         f"Prior agent final message:\n{truncate(final_message, 1800)}\n\n"
+        f"{policy_text}"
         f"{verify_text}\n"
     )
 
@@ -348,6 +351,31 @@ def git_diff(workspace: Path) -> str:
     return "\n\n".join(parts)
 
 
+def changed_paths(workspace: Path) -> list[str]:
+    paths: list[str] = []
+    diff = run_command(["git", "diff", "--name-only", "--diff-filter=ACMRTUXB", "HEAD", "--", "."], workspace, timeout=60)
+    if diff.returncode == 0:
+        paths.extend(path for path in diff.stdout.splitlines() if path)
+    untracked = run_command(["git", "ls-files", "--others", "--exclude-standard"], workspace, timeout=60)
+    if untracked.returncode == 0:
+        paths.extend(path for path in untracked.stdout.splitlines() if path)
+    return sorted(set(paths))
+
+
+def verification_policy_errors(task: dict[str, Any], workspace: Path) -> list[str]:
+    forbidden = task.get("forbidden_path_regex")
+    if not forbidden:
+        return []
+    pattern = re.compile(str(forbidden))
+    matches = [path for path in changed_paths(workspace) if pattern.search(path)]
+    if not matches:
+        return []
+    shown = ", ".join(matches[:8])
+    if len(matches) > 8:
+        shown += f", ... (+{len(matches) - 8} more)"
+    return [f"forbidden_path_changed: {shown}"]
+
+
 def build_trace(task: dict[str, Any], pass_records: list[dict[str, Any]], workspace: Path) -> str:
     parts = [
         f"TASK_ID: {task['task_id']}",
@@ -358,6 +386,7 @@ def build_trace(task: dict[str, Any], pass_records: list[dict[str, Any]], worksp
         codex = record["codex"]
         verify = record.get("verify")
         final_message = record.get("codex_final_message") or ""
+        policy = record.get("policy_errors") or []
         parts.append(
             "\n".join(
                 [
@@ -374,6 +403,7 @@ def build_trace(task: dict[str, Any], pass_records: list[dict[str, Any]], worksp
                         f"VERIFY_STDOUT:\n{truncate(verify['stdout'], 3000)}\n"
                         f"VERIFY_STDERR:\n{truncate(verify['stderr'], 3000)}"
                     ),
+                    "POLICY_ERRORS: " + ("; ".join(policy) if policy else "<none>"),
                 ]
             )
         )
@@ -497,6 +527,8 @@ def run_arm(task: dict[str, Any], arm: str, root: Path, coach, args: argparse.Na
         coach_memory_text = memory_path.read_text(encoding="utf-8") if memory_path is not None else None
         codex_result = run_codex_pass(task, workspace, arm, pass_idx, args.max_passes, pass_records, setup_record, coach_memory_text, args)
         verify_success, verify_result = run_verification(task, workspace, args.verify_timeout)
+        policy_errors = verification_policy_errors(task, workspace)
+        verify_success = verify_success and not policy_errors
         solved = verify_success
 
         record = {
@@ -505,6 +537,7 @@ def run_arm(task: dict[str, Any], arm: str, root: Path, coach, args: argparse.Na
             "codex_final_message": read_codex_final_message(workspace, pass_idx),
             "verify": result_to_dict(verify_result),
             "verify_success": verify_success,
+            "policy_errors": policy_errors,
             "coach": None,
         }
         pass_records.append(record)

@@ -19,6 +19,8 @@ DEFAULT_FAST_REPOS = (
     "sphinx-doc/sphinx",
 )
 
+DEFAULT_FORBIDDEN_PATH_REGEX = r"(^|/)(tests?/|tox\.ini$|noxfile\.py$|setup\.cfg$|pyproject\.toml$|setup\.py$)"
+
 
 def parse_json_list(value: Any) -> list[str]:
     if value is None:
@@ -180,6 +182,8 @@ def make_task(row: dict[str, Any], tests: list[str], args: argparse.Namespace) -
         "test_patch": row.get("test_patch") or "",
         "runner": args.runner,
     }
+    if not args.allow_harness_edits:
+        task["forbidden_path_regex"] = DEFAULT_FORBIDDEN_PATH_REGEX
     if spec and spec.get("pre_install"):
         task["commit_setup_changes"] = True
     setup_command = build_setup_command(row, args, spec)
@@ -202,6 +206,7 @@ def main() -> None:
     parser.add_argument("--runner", choices=("local-venv", "docker"), default="local-venv")
     parser.add_argument("--docker-image", default=None, help="Override Docker image. Default uses python:<SWE-bench spec python>.")
     parser.add_argument("--allow-pre-install", action="store_true", help="Include specs with pre_install commands. Default excludes them because many mutate repo files.")
+    parser.add_argument("--allow-harness-edits", action="store_true", help="Do not mark test/harness/config edits as verification policy failures.")
     parser.add_argument("--python-bin", default="python3")
     parser.add_argument("--install-mode", choices=("editable", "editable-no-deps", "none"), default="editable")
     args = parser.parse_args()
