@@ -386,6 +386,7 @@ def build_coach_prompt(task: dict[str, Any], trace: str, memory_text: str) -> st
         "<|im_start|><|object_ref_start|>"
         "You are HRM-Coach, a lightweight observer for autonomous coding and research agents.\n"
         "Given the current task trace and task-local Markdown memory, output strict JSON with either a noop or one minimal Markdown rule patch.\n\n"
+        "The patch must change the next agent pass. Prefer concrete verification, localization, or scope gates over generic reminders.\n\n"
         "SOURCE: live-codex-loop\n"
         f"TASK_ID: {task['task_id']}\n"
         f"REPO: {task.get('repo_url') or task.get('repo_path') or '<unknown>'}\n\n"

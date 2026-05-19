@@ -169,8 +169,8 @@ RULES = {
     "test_overfitting": {
         "title": "Do Not Trust Self-Generated Tests Alone",
         "trigger": "Generated tests pass while the original issue or hidden checks are still unresolved.",
-        "do": "Tie each test to a concrete issue requirement and run an existing project test or minimal reproduction before submitting.",
-        "avoid": "Creating broad new tests that validate the current patch without exercising the reported bug.",
+        "do": "Run the provided verification command or original failing reproduction after any narrow/self-generated test, and treat that command as the submission gate.",
+        "avoid": "Submitting because a new or narrower test passes while the task's requested verification still fails.",
     },
     "overbroad_patch": {
         "title": "Constrain Patch Scope",
@@ -181,8 +181,8 @@ RULES = {
     "missing_verification": {
         "title": "Verify Before Submit",
         "trigger": "The agent made code changes but no targeted verification command is visible.",
-        "do": "Run the smallest relevant test, reproduction script, or import check before finalizing the patch.",
-        "avoid": "Submitting a code diff based only on visual inspection.",
+        "do": "Run the exact suggested verification command when one is supplied; otherwise run the smallest existing project test or reproduction tied to the issue.",
+        "avoid": "Submitting a code diff based only on visual inspection or a different, easier command.",
     },
     "poor_localization": {
         "title": "Localize From The Failure Signal",
@@ -199,8 +199,8 @@ RULES = {
     "submit_without_evidence": {
         "title": "Submit Only With Evidence",
         "trigger": "The agent reaches submit after errors or without a clear passing signal.",
-        "do": "Before submitting, list the exact command or reasoning evidence that supports the patch.",
-        "avoid": "Submitting because the patch looks plausible.",
+        "do": "Before submitting, run the supplied verification command when available and cite that exact result; if it fails, keep debugging instead of claiming success from a narrower check.",
+        "avoid": "Submitting because the patch looks plausible or because an easier local command passed.",
     },
     "context_drift": {
         "title": "Re-anchor To The Objective",
@@ -252,6 +252,7 @@ def build_prompt(source: str, example: dict[str, Any], trace: str) -> str:
         "<|im_start|><|object_ref_start|>"
         "You are HRM-Coach, a lightweight observer for autonomous coding and research agents.\n"
         "Given the current task trace and task-local Markdown memory, output strict JSON with either a noop or one minimal Markdown rule patch.\n\n"
+        "The patch must change the next agent pass. Prefer concrete verification, localization, or scope gates over generic reminders.\n\n"
         f"SOURCE: {source}\n"
         f"TASK_ID: {task_id}\n"
         f"REPO: {repo}\n\n"
