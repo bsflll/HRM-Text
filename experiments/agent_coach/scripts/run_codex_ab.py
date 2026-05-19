@@ -437,6 +437,7 @@ def load_coach(args: argparse.Namespace):
     from train_hrm_coach_sft import patch_hrm_prefixlm_mask_compat
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    patch_hrm_prefixlm_mask_compat()
     tokenizer = AutoTokenizer.from_pretrained(args.coach_model_path, trust_remote_code=True, local_files_only=args.local_files_only)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -447,7 +448,6 @@ def load_coach(args: argparse.Namespace):
         dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
         attn_implementation="sdpa",
     ).to(device)
-    patch_hrm_prefixlm_mask_compat()
     model.eval()
     return model, tokenizer, device
 

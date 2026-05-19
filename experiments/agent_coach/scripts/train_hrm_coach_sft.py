@@ -18,9 +18,27 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 def patch_hrm_prefixlm_mask_compat() -> None:
-    """Bridge HRM-Text remote code to Transformers builds using mask functions."""
+    """Bridge HRM-Text remote code across nearby Transformers builds."""
+    import transformers.utils.generic as generic
+
+    if not hasattr(generic, "split_attention_implementation"):
+        def split_attention_implementation(attn_implementation):
+            if isinstance(attn_implementation, dict):
+                base = (
+                    attn_implementation.get("")
+                    or attn_implementation.get("base")
+                    or attn_implementation.get("default")
+                    or next(iter(attn_implementation.values()), None)
+                )
+                return attn_implementation, base
+            return None, attn_implementation
+
+        generic.split_attention_implementation = split_attention_implementation
+
     import transformers.masking_utils as masking_utils
 
+    if getattr(masking_utils.create_causal_mask, "_hrm_coach_compat", False):
+        return
     real_create_causal_mask = masking_utils.create_causal_mask
 
     def compat_create_causal_mask(*args, block_sequence_ids=None, or_mask_function=None, **kwargs):
@@ -46,6 +64,7 @@ def patch_hrm_prefixlm_mask_compat() -> None:
 
         return real_create_causal_mask(*args, or_mask_function=prefix_or_mask, **kwargs)
 
+    compat_create_causal_mask._hrm_coach_compat = True
     masking_utils.create_causal_mask = compat_create_causal_mask
     for module in list(sys.modules.values()):
         if getattr(module, "__name__", "").endswith("modeling_hrm_text") and hasattr(module, "create_causal_mask"):
@@ -216,6 +235,7 @@ def main() -> None:
     if rank == 0:
         print(json.dumps({"event": "startup", "world_size": world_size, "device": str(device), **vars(args)}, default=str))
 
+    patch_hrm_prefixlm_mask_compat()
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True, local_files_only=args.local_files_only)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -227,7 +247,6 @@ def main() -> None:
         dtype=torch.bfloat16,
         attn_implementation="sdpa",
     )
-    patch_hrm_prefixlm_mask_compat()
     model.config.use_cache = False
     if hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()

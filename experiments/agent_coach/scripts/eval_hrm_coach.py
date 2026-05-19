@@ -151,6 +151,7 @@ def main() -> None:
     rows = rows[: args.limit]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    patch_hrm_prefixlm_mask_compat()
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True, local_files_only=args.local_files_only)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -161,7 +162,6 @@ def main() -> None:
         dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
         attn_implementation="sdpa",
     ).to(device)
-    patch_hrm_prefixlm_mask_compat()
     model.eval()
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
