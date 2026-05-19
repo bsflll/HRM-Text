@@ -201,7 +201,10 @@ def build_retry_context(pass_idx: int, previous_records: list[dict[str, Any]]) -
     if verify is None:
         verify_text = "No verification command was available."
     else:
+        cmd = verify.get("cmd")
+        cmd_text = f"Verification command: {cmd}\n" if cmd else ""
         verify_text = (
+            f"{cmd_text}"
             f"Verification exit: {verify['returncode']} timed_out={verify['timed_out']}\n"
             f"Verification stdout:\n{truncate(verify['stdout'], 1800)}\n"
             f"Verification stderr:\n{truncate(verify['stderr'], 1800)}"
@@ -222,13 +225,23 @@ def build_codex_prompt(
     max_passes: int,
     previous_records: list[dict[str, Any]],
     setup_result: dict[str, Any] | None,
+    coach_memory_text: str | None = None,
 ) -> str:
     test_command = task.get("test_command", "")
     coach_note = ""
     if arm == "coach":
+        memory_block = ""
+        if coach_memory_text:
+            memory_block = (
+                "\nCurrent HRM-Coach memory content:\n"
+                "```markdown\n"
+                f"{truncate(coach_memory_text, 2400)}\n"
+                "```\n"
+            )
         coach_note = (
             f"\nBefore acting, read `{PATCH_FILE}` if it exists. Treat it as task-local behavioral feedback from a trace observer.\n"
             "Apply its rules only when their trigger matches the current situation.\n"
+            f"{memory_block}"
         )
 
     return (
@@ -243,6 +256,7 @@ def build_codex_prompt(
         "- Make only changes needed for this task.\n"
         "- Use shell commands to inspect the code before editing.\n"
         "- Run the relevant test or reproduction command before finishing.\n"
+        "- If a suggested verification command is provided, use it as the final gate before finishing.\n"
         "- Leave the repository in a state where the requested behavior is implemented.\n"
         "- In your final response, summarize changed files and the verification command/result.\n"
         + (f"\nSuggested verification command:\n{test_command}\n" if test_command else "")
@@ -257,9 +271,10 @@ def run_codex_pass(
     max_passes: int,
     previous_records: list[dict[str, Any]],
     setup_result: dict[str, Any] | None,
+    coach_memory_text: str | None,
     args: argparse.Namespace,
 ) -> CommandResult:
-    prompt = build_codex_prompt(task, arm, pass_idx, max_passes, previous_records, setup_result)
+    prompt = build_codex_prompt(task, arm, pass_idx, max_passes, previous_records, setup_result, coach_memory_text)
     cmd = [
         args.codex_bin,
         "exec",
@@ -336,11 +351,13 @@ def git_diff(workspace: Path) -> str:
 def build_trace(task: dict[str, Any], pass_records: list[dict[str, Any]], workspace: Path) -> str:
     parts = [
         f"TASK_ID: {task['task_id']}",
+        f"SUGGESTED_VERIFICATION_COMMAND: {task.get('test_command') or '<missing>'}",
         f"ISSUE:\n{task['issue']}",
     ]
     for record in pass_records[-3:]:
         codex = record["codex"]
         verify = record.get("verify")
+        final_message = record.get("codex_final_message") or ""
         parts.append(
             "\n".join(
                 [
@@ -348,10 +365,12 @@ def build_trace(task: dict[str, Any], pass_records: list[dict[str, Any]], worksp
                     f"CODEX_EXIT: {codex['returncode']} timed_out={codex['timed_out']}",
                     f"CODEX_STDOUT:\n{truncate(codex['stdout'], 3000)}",
                     f"CODEX_STDERR:\n{truncate(codex['stderr'], 3000)}",
+                    f"AGENT_FINAL_MESSAGE:\n{truncate(final_message, 3000)}",
                     (
                         "VERIFY: <missing>"
                         if verify is None
-                        else f"VERIFY_EXIT: {verify['returncode']} timed_out={verify['timed_out']}\n"
+                        else f"VERIFY_COMMAND: {verify.get('cmd')}\n"
+                        f"VERIFY_EXIT: {verify['returncode']} timed_out={verify['timed_out']}\n"
                         f"VERIFY_STDOUT:\n{truncate(verify['stdout'], 3000)}\n"
                         f"VERIFY_STDERR:\n{truncate(verify['stderr'], 3000)}"
                     ),
@@ -474,7 +493,8 @@ def run_arm(task: dict[str, Any], arm: str, root: Path, coach, args: argparse.Na
     patches_applied = 0
 
     for pass_idx in range(args.max_passes):
-        codex_result = run_codex_pass(task, workspace, arm, pass_idx, args.max_passes, pass_records, setup_record, args)
+        coach_memory_text = memory_path.read_text(encoding="utf-8") if memory_path is not None else None
+        codex_result = run_codex_pass(task, workspace, arm, pass_idx, args.max_passes, pass_records, setup_record, coach_memory_text, args)
         verify_success, verify_result = run_verification(task, workspace, args.verify_timeout)
         solved = verify_success
 
@@ -504,6 +524,7 @@ def run_arm(task: dict[str, Any], arm: str, root: Path, coach, args: argparse.Na
         record["coach"] = {
             "prediction": prediction,
             "raw_generation": raw_generation,
+            "prompt_preview": truncate(prompt, 20000),
             "errors": errors,
             "applied": applied,
         }
