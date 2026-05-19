@@ -1,0 +1,143 @@
+output_dir = "/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/prime_rl_hrm_coach_smoke_20260519_185236"
+clean_output_dir = true
+max_steps = 4
+max_async_level = 1
+seq_len = 2048
+
+[model]
+name = "/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/run_verify_gate_v2_from_v1_20260519_020256/final"
+
+[tokenizer]
+name = "/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/run_verify_gate_v2_from_v1_20260519_020256/final"
+trust_remote_code = true
+chat_template = "/home/ubuntu/christina/HRM-Text/experiments/agent_coach/prime_rl/raw_content_chat_template.jinja"
+
+[wandb]
+entity = "ricursive-intelligence"
+project = "hrm-agent-coach"
+name = "hrm-coach-prime-rl-smoke-20260519-185236"
+tags = ["hrm-text", "agent-coach", "prime-rl", "smoke", "prefixlm-token-types"]
+shared = false
+
+[ckpt]
+interval = 4
+keep_last = 2
+
+[deployment]
+type = "single_node"
+gpus_per_node = 8
+num_train_gpus = 4
+num_infer_gpus = 1
+
+[slurm]
+project_dir = "/home/ubuntu/christina/prime-rl"
+job_name = "hrm-coach-prime-rl"
+time = "02:00:00"
+pre_run_command = "export HRM_TEXT_PRIME_RL_PATCH_VLLM=1; export PYTHONPATH=/home/ubuntu/christina/HRM-Text/experiments/agent_coach/prime_rl:${PYTHONPATH:-}"
+
+[trainer.model]
+impl = "hf"
+attn = "sdpa"
+trust_remote_code = true
+seq_len = 2048
+
+[trainer.model.ac]
+freq = 1
+
+[trainer.optim]
+lr = 5e-7
+weight_decay = 0.0
+
+[orchestrator]
+batch_size = 16
+rollouts_per_example = 4
+max_inflight_rollouts = 16
+max_error_reschedule_attempts = 3
+
+[orchestrator.model]
+trust_remote_code = true
+
+[orchestrator.train.sampling]
+temperature = 0.8
+max_completion_tokens = 256
+
+[orchestrator.train.sampling.extra_body.structured_outputs]
+disable_additional_properties = true
+
+[orchestrator.train.sampling.extra_body.structured_outputs.json]
+type = "object"
+additionalProperties = false
+required = ["action", "failure_mode", "confidence", "patch_file", "markdown_patch", "evidence"]
+
+[orchestrator.train.sampling.extra_body.structured_outputs.json.properties.action]
+type = "string"
+enum = ["patch", "noop"]
+
+[orchestrator.train.sampling.extra_body.structured_outputs.json.properties.failure_mode]
+type = "string"
+enum = [
+  "none",
+  "repeated_action_loop",
+  "test_overfitting",
+  "overbroad_patch",
+  "missing_verification",
+  "poor_localization",
+  "environment_thrash",
+  "submit_without_evidence",
+  "context_drift",
+]
+
+[orchestrator.train.sampling.extra_body.structured_outputs.json.properties.confidence]
+type = "number"
+minimum = 0.0
+maximum = 1.0
+
+[orchestrator.train.sampling.extra_body.structured_outputs.json.properties.patch_file]
+type = "string"
+const = ".agent/HRM_COACH.md"
+
+[orchestrator.train.sampling.extra_body.structured_outputs.json.properties.markdown_patch]
+type = "string"
+
+[orchestrator.train.sampling.extra_body.structured_outputs.json.properties.evidence]
+type = "array"
+minItems = 1
+maxItems = 4
+
+[orchestrator.train.sampling.extra_body.structured_outputs.json.properties.evidence.items]
+type = "string"
+
+[[orchestrator.filters]]
+type = "gibberish"
+enforce = false
+token_id_threshold = 100000
+logprob_offset = 2.0
+
+[[orchestrator.filters]]
+type = "repetition"
+enforce = false
+window = 3000
+prob_threshold = 0.99
+
+[[orchestrator.filters]]
+type = "zero_advantage"
+enforce = false
+
+[[orchestrator.train.env]]
+id = "hrm_coach_reward"
+name = "hrm-coach-reward"
+num_workers = 16
+args = { train_limit = 12000, eval_limit = 256, max_prompt_chars = 3000 }
+
+[inference]
+gpu_memory_utilization = 0.55
+enable_prefix_caching = false
+
+[inference.model]
+trust_remote_code = true
+dtype = "bfloat16"
+max_model_len = 2048
+enforce_eager = true
+
+[inference.vllm_extra]
+model_impl = "transformers"

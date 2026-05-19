@@ -1,0 +1,88 @@
+output_dir = "/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/prime_rl_hrm_coach_hf_smoke_20260519_195005"
+clean_output_dir = true
+max_steps = 2
+max_async_level = 1
+seq_len = 2048
+
+[model]
+name = "/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/run_verify_gate_v2_from_v1_20260519_020256/final"
+
+[tokenizer]
+name = "/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/run_verify_gate_v2_from_v1_20260519_020256/final"
+trust_remote_code = true
+chat_template = "/home/ubuntu/christina/HRM-Text/experiments/agent_coach/prime_rl/raw_content_chat_template.jinja"
+
+[wandb]
+entity = "ricursive-intelligence"
+project = "hrm-agent-coach"
+name = "hrm-coach-prime-rl-hf-smoke-20260519-195005"
+tags = ["hrm-text", "agent-coach", "prime-rl", "hf-generate", "prefixlm-token-types"]
+shared = false
+
+[ckpt]
+interval = 2
+keep_last = 2
+
+[deployment]
+type = "single_node"
+gpus_per_node = 8
+num_train_gpus = 4
+num_infer_gpus = 0
+
+[slurm]
+project_dir = "/home/ubuntu/christina/prime-rl"
+job_name = "hrm-coach-prime-rl-hf"
+time = "02:00:00"
+pre_run_command = "export HRM_TEXT_PRIME_RL_PATCH_VLLM=1; export PYTHONPATH=/home/ubuntu/christina/HRM-Text:/home/ubuntu/christina/HRM-Text/experiments/agent_coach/prime_rl:${PYTHONPATH:-}; mkdir -p /home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/prime_rl_hrm_coach_hf_smoke_20260519_195005/logs; CUDA_VISIBLE_DEVICES=0 /home/ubuntu/.local/bin/uv run python /home/ubuntu/christina/HRM-Text/experiments/agent_coach/prime_rl/hrm_coach_hf_server.py --model-path /home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/run_verify_gate_v2_from_v1_20260519_020256/final --model-name /home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/run_verify_gate_v2_from_v1_20260519_020256/final --port 8000 --max-prompt-tokens 1800 --default-max-new-tokens 256 > /home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/prime_rl_hrm_coach_hf_smoke_20260519_195005/logs/hf_server.log 2>&1 & export HRM_COACH_HF_SERVER_PID=$!; export CUDA_VISIBLE_DEVICES=1,2,3,4"
+
+[trainer.model]
+impl = "hf"
+attn = "sdpa"
+trust_remote_code = true
+seq_len = 2048
+
+[trainer.model.ac]
+freq = 1
+
+[trainer.optim]
+lr = 5e-7
+weight_decay = 0.0
+
+[orchestrator]
+batch_size = 8
+rollouts_per_example = 2
+max_inflight_rollouts = 4
+max_error_reschedule_attempts = 3
+
+[orchestrator.model]
+trust_remote_code = true
+
+[orchestrator.advantage]
+type = "custom"
+import_path = "experiments.agent_coach.prime_rl.hrm_coach_reward.absolute_reward_advantage"
+
+[orchestrator.train.sampling]
+temperature = 0.0
+max_completion_tokens = 256
+
+[[orchestrator.filters]]
+type = "gibberish"
+enforce = false
+token_id_threshold = 100000
+logprob_offset = 2.0
+
+[[orchestrator.filters]]
+type = "repetition"
+enforce = false
+window = 3000
+prob_threshold = 0.99
+
+[[orchestrator.filters]]
+type = "zero_advantage"
+enforce = false
+
+[[orchestrator.train.env]]
+id = "hrm_coach_reward"
+name = "hrm-coach-reward"
+num_workers = 4
+args = { train_limit = 12000, eval_limit = 256, max_prompt_chars = 20000 }
