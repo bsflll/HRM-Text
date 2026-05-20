@@ -71,3 +71,17 @@ baseline = 0.55
 [orchestrator.train.env.args]
 reward_profile = "balanced_v2"
 ```
+
+The 10-shard balanced v2 run completed 160 real RL steps per shard. On the
+same first-64 held-out validation slice used above:
+
+- best checkpoint: `shard_07/weights/step_160`
+- best held-out reward: `0.7572`
+- strict JSON/schema: `64/64`
+- predicted action mix: `56 patch`, `8 noop`
+- previous best RL reward: `0.7287`, with `64 patch`, `0 noop`
+- pre-RL SFT reward: `0.7290`, with `59 patch`, `5 noop`
+
+This run fixed the main failure mode from the first RL pass: the best checkpoint
+keeps high schema reliability while recovering some `noop` behavior and improving
+held-out reward.
