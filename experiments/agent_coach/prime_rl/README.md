@@ -18,6 +18,8 @@ model reads an open agent trace and emits one strict JSON action that can patch
   smoke config.
 - `hrm_coach_prime_rl_smoke.toml`: Earlier vLLM smoke config kept for comparison.
 - `debug_generation_modes.py`: Diagnostic script for comparing generation paths.
+- `evaluate_hrm_coach_checkpoint.py`: Deterministic held-out evaluator for
+  Prime-RL HF-compatible `weights/step_*` checkpoints.
 
 ## Validated Run
 
@@ -29,3 +31,21 @@ The HF-backed smoke run completed two real RL steps on open agent traces:
 The long 10-shard launch uses the same HF path, one local HF server per node,
 four trainer GPUs per node, and dataset sharding via `train_offset` /
 `train_stride`.
+
+## 10-Shard RL Result
+
+The 10-shard run completed successfully. Each shard trained for 240 real RL
+steps, wrote `weights/step_240`, and exited with code `0:0`.
+
+Held-out evaluation on the first 64 validation traces:
+
+- all 10 RL checkpoints produced valid strict JSON on `64/64` examples
+- all 10 RL checkpoints satisfied the required schema on `64/64` examples
+- best RL checkpoints were `shard_04`, `shard_07`, and `shard_09` with reward
+  `0.7287`
+- the pre-RL SFT checkpoint scored `0.7290`
+
+The main observed regression is over-patching: the final RL checkpoints emitted
+`patch` for every held-out example, while the validation slice contains 19
+target `noop` examples. A follow-up RL pass should rebalance or upweight the
+noop/action term before using RL reward as the selection criterion.
