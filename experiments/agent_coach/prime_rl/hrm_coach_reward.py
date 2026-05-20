@@ -27,6 +27,10 @@ ALLOWED_FAILURE_MODES = {
     "context_drift",
 }
 REQUIRED_KEYS = {"action", "failure_mode", "confidence", "patch_file", "markdown_patch", "evidence"}
+REWARD_PROFILES = {
+    "default": [0.05, 0.25, 0.25, 0.20, 0.10, 0.15],
+    "balanced_v2": [0.02, 0.08, 0.45, 0.30, 0.03, 0.12],
+}
 
 
 def _json_loads(text: str) -> dict[str, Any] | None:
@@ -167,6 +171,14 @@ def absolute_reward_advantage(inputs: Any, **_: Any) -> Any:
     return AdvantageOutputs(advantages=rewards)
 
 
+def calibrated_reward_advantage(inputs: Any, baseline: float = 0.55, **_: Any) -> Any:
+    """Center shaped rewards so low-scoring valid JSON is actively discouraged."""
+    from prime_rl.orchestrator.advantage import AdvantageOutputs
+
+    rewards = torch.tensor([[r["reward"] for r in group] for group in inputs.rollouts], dtype=torch.float32)
+    return AdvantageOutputs(advantages=rewards - float(baseline))
+
+
 def load_environment(
     data_dir: str = str(DEFAULT_DATA_DIR),
     train_split: str = "train.jsonl",
@@ -176,6 +188,7 @@ def load_environment(
     max_prompt_chars: int = 20000,
     train_offset: int = 0,
     train_stride: int = 1,
+    reward_profile: str = "default",
     **_: Any,
 ) -> vf.Environment:
     data_path = Path(data_dir)
@@ -192,6 +205,9 @@ def load_environment(
         _read_jsonl(data_path / eval_split, limit=eval_limit, max_prompt_chars=max_prompt_chars)
     )
 
+    if reward_profile not in REWARD_PROFILES:
+        raise ValueError(f"Unknown reward_profile={reward_profile!r}; expected one of {sorted(REWARD_PROFILES)}")
+
     rubric = vf.Rubric(
         funcs=[
             json_valid_reward,
@@ -201,7 +217,7 @@ def load_environment(
             patch_file_reward,
             markdown_similarity_reward,
         ],
-        weights=[0.05, 0.25, 0.25, 0.20, 0.10, 0.15],
+        weights=REWARD_PROFILES[reward_profile],
     )
     return vf.SingleTurnEnv(
         dataset=train_dataset,

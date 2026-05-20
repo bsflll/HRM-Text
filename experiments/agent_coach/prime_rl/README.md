@@ -49,3 +49,25 @@ The main observed regression is over-patching: the final RL checkpoints emitted
 `patch` for every held-out example, while the validation slice contains 19
 target `noop` examples. A follow-up RL pass should rebalance or upweight the
 noop/action term before using RL reward as the selection criterion.
+
+## Balanced V2 Follow-Up
+
+`hrm_coach_reward.py` includes an opt-in `balanced_v2` reward profile and
+`calibrated_reward_advantage`. This profile lowers the reward for merely valid
+JSON and upweights action/failure-mode calibration. The calibrated advantage
+subtracts a baseline so low-scoring false-positive patches receive negative
+advantage instead of weak positive reinforcement.
+
+Use it with:
+
+```toml
+[orchestrator.advantage]
+type = "custom"
+import_path = "experiments.agent_coach.prime_rl.hrm_coach_reward.calibrated_reward_advantage"
+
+[orchestrator.advantage.kwargs]
+baseline = 0.55
+
+[orchestrator.train.env.args]
+reward_profile = "balanced_v2"
+```
