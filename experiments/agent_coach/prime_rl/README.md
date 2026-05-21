@@ -85,3 +85,22 @@ same first-64 held-out validation slice used above:
 This run fixed the main failure mode from the first RL pass: the best checkpoint
 keeps high schema reliability while recovering some `noop` behavior and improving
 held-out reward.
+
+Full validation evaluation on all 1,800 validation traces confirmed the
+improvement:
+
+- evaluation root:
+  `/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/evals/fullval_base_vs_balanced_s07_20260521`
+- validation target mix: `1193 patch`, `607 noop`
+- pre-RL SFT reward: `0.7309`, with `1635 patch`, `165 noop`
+- balanced v2 `shard_07/weights/step_160` reward: `0.7460`, with
+  `1450 patch`, `350 noop`
+- absolute reward gain: `+0.0151`
+- action accuracy: `0.6867` -> `0.6994`
+- failure-mode accuracy: `0.4283` -> `0.4644`
+- markdown similarity: `0.4906` -> `0.5217`
+- strict JSON/schema: `1800/1800` for both base SFT and balanced v2
+
+The full run used four GPU nodes: two offset/stride shards for the base SFT
+checkpoint and two offset/stride shards for balanced v2 `shard_07`. All four
+Slurm jobs completed with exit code `0:0` in about 2.25 to 2.5 hours.
