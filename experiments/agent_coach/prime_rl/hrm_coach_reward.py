@@ -28,8 +28,9 @@ ALLOWED_FAILURE_MODES = {
 }
 REQUIRED_KEYS = {"action", "failure_mode", "confidence", "patch_file", "markdown_patch", "evidence"}
 REWARD_PROFILES = {
-    "default": [0.05, 0.25, 0.25, 0.20, 0.10, 0.15],
-    "balanced_v2": [0.02, 0.08, 0.45, 0.30, 0.03, 0.12],
+    "default": [0.05, 0.25, 0.25, 0.00, 0.20, 0.10, 0.15],
+    "balanced_v2": [0.02, 0.08, 0.45, 0.00, 0.30, 0.03, 0.12],
+    "balanced_v3_noop": [0.02, 0.06, 0.30, 0.25, 0.25, 0.02, 0.10],
 }
 
 
@@ -135,6 +136,16 @@ def action_reward(completion: vf.Messages, answer: str, **_: Any) -> float:
     return 1.0 if pred.get("action") == tgt.get("action") else 0.0
 
 
+def noop_weighted_action_reward(completion: vf.Messages, answer: str, **_: Any) -> float:
+    pred = _prediction(completion)
+    tgt = _target(answer)
+    if pred is None or tgt is None or not _schema_ok(pred):
+        return 0.0
+    if pred.get("action") != tgt.get("action"):
+        return 0.0
+    return 1.0 if tgt.get("action") == "noop" else 0.55
+
+
 def failure_mode_reward(completion: vf.Messages, answer: str, **_: Any) -> float:
     pred = _prediction(completion)
     tgt = _target(answer)
@@ -213,6 +224,7 @@ def load_environment(
             json_valid_reward,
             schema_reward,
             action_reward,
+            noop_weighted_action_reward,
             failure_mode_reward,
             patch_file_reward,
             markdown_similarity_reward,

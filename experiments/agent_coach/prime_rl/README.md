@@ -104,3 +104,29 @@ improvement:
 The full run used four GPU nodes: two offset/stride shards for the base SFT
 checkpoint and two offset/stride shards for balanced v2 `shard_07`. All four
 Slurm jobs completed with exit code `0:0` in about 2.25 to 2.5 hours.
+
+## Balanced V3 Noop Continuation
+
+`balanced_v3_noop` adds a `noop_weighted_action_reward` term to keep improving
+action calibration after the full-validation result showed residual
+over-patching. The profile gives stronger extra credit to correct `noop`
+decisions while still rewarding correct `patch` decisions, so the intended
+pressure is higher noop recall without collapsing into no-op.
+
+The continuation run starts from balanced v2 `shard_07/weights/step_160`, with
+`modeling_hrm_text.py` copied into a separate loadable continuation directory:
+
+`/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/prime_rl_hrm_coach_hf_balanced_v2_10node_20260520_1651/shard_07/weights/step_160_hf_continuation`
+
+Validation before launch:
+
+- old direct checkpoint path failed trainer startup because it did not include
+  `modeling_hrm_text.py`
+- retry smoke job `1334` completed two real RL steps with `fake=None`
+- smoke wrote `weights/step_2`
+
+Four 100-step continuation shards were launched with `train_stride = 4`,
+offsets `0..3`, learning rate `2e-7`, and calibrated reward baseline `0.58`.
+Generated configs and manifest are under:
+
+`/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/prime_rl_hrm_coach_hf_balanced_v3_noop_4node_20260521_210703`
