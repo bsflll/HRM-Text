@@ -130,3 +130,30 @@ offsets `0..3`, learning rate `2e-7`, and calibrated reward baseline `0.58`.
 Generated configs and manifest are under:
 
 `/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/outputs/prime_rl_hrm_coach_hf_balanced_v3_noop_4node_20260521_210703`
+
+All four continuation shards completed successfully. A first-256 validation
+sweep selected `shard_01/weights/step_100`, then a four-way sharded full
+validation pass evaluated it on all 1,800 validation traces.
+
+Full validation result:
+
+- evaluation root:
+  `/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/evals/v3_noop_shard01_fullval_20260522_0018`
+- comparison JSON:
+  `/home/ubuntu/christina/rl_comparison/prime-rl/experiment/hrm_text_1b_agent_coach/evals/v3_noop_shard01_fullval_20260522_0018/comparison_full_with_baselines.json`
+- base SFT reward: `0.7309`, with `1635 patch`, `165 noop`
+- balanced v2 `shard_07/weights/step_160` reward: `0.7460`, with
+  `1450 patch`, `350 noop`
+- balanced v3 `shard_01/weights/step_100` reward: `0.7518`, with
+  `1076 patch`, `724 noop`
+- reward gain over base SFT: `+0.0209`
+- reward gain over balanced v2: `+0.0058`
+- v3-profile reward gain over balanced v2: `+0.0123`
+- true noop recovery: base `104`, v2 `208`, v3 `373` out of `607`
+- false noop count on patch targets: base `61`, v2 `142`, v3 `351`
+
+The v3 checkpoint is the best reward checkpoint so far and is much better at
+recovering true noops, but it overcorrects: action accuracy drops from v2
+`0.6994` to v3 `0.6750` because it misses more patch-worthy traces. It is a
+useful research checkpoint for the agent-coach demo, while the safer deploy
+choice depends on whether false patches or missed corrections are more costly.
